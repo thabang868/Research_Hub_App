@@ -41,7 +41,7 @@ npm install
 npm run dev
 ```
 
-App runs on `http://localhost:5173` by default. API requests to `/api/*` are proxied to the backend at `http://localhost:5000`.
+The production app is hosted at `https://researchhub-sigma.vercel.app`. API requests to `/api/*` are proxied to `https://research-hub-backend-wt4p.onrender.com`.
 
 ### 3. Build for production
 

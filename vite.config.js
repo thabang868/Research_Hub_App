@@ -6,7 +6,11 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://localhost:5000',
+      '/api': {
+        target: 'https://research-hub-backend-wt4p.onrender.com',
+        changeOrigin: true,
+        secure: true,
+      },
     },
   },
 })
