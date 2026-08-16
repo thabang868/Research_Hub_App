@@ -9,21 +9,37 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      getMe(token)
-        .then((data) => {
+    const hydrateSession = async () => {
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const confirmedToken = hash.get('access_token');
+      const confirmedRefreshToken = hash.get('refresh_token');
+
+      if (confirmedToken) {
+        localStorage.setItem('access_token', confirmedToken);
+        if (confirmedRefreshToken) localStorage.setItem('refresh_token', confirmedRefreshToken);
+        // Remove credentials from the visible URL and browser history.
+        window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
+      }
+
+      const token = confirmedToken || localStorage.getItem('access_token');
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data = await getMe(token);
           setUser(data.user);
           setSubscription(data.subscription || null);
-        })
-        .catch(() => {
+      } catch {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    hydrateSession();
   }, []);
 
   const login = (userData, session, sub) => {
