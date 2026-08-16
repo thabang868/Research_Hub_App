@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getMe } from '../api/auth';
 
 const AuthContext = createContext(null);
@@ -7,6 +7,23 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const refreshSubscription = useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return null;
+
+    try {
+      const response = await fetch('/api/billing/subscription', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      setSubscription(data.subscription || null);
+      return data.subscription || null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     const hydrateSession = async () => {
@@ -42,6 +59,23 @@ export function AuthProvider({ children }) {
     hydrateSession();
   }, []);
 
+  useEffect(() => {
+    if (!user) return undefined;
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshSubscription();
+    };
+    const interval = window.setInterval(refreshSubscription, 60000);
+    window.addEventListener('focus', refreshSubscription);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshSubscription);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [user, refreshSubscription]);
+
   const login = (userData, session, sub) => {
     setUser(userData);
     setSubscription(sub || null);
@@ -65,7 +99,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, subscription, setSubscription, loading, login, logout, hasActiveSubscription }}>
+    <AuthContext.Provider value={{ user, subscription, setSubscription, refreshSubscription, loading, login, logout, hasActiveSubscription }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,13 +1,96 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+function ProfileDetails({ user, subscription, remainingTime, onPricing, onLogout }) {
+  const planNames = {
+    free_trial: 'Free Trial',
+    daily: 'Daily Plan',
+    monthly: 'Monthly Plan',
+    unlimited: 'Unlimited Plan',
+  };
+
+  return (
+    <>
+      <div className="px-4 py-3 border-b border-gray-100">
+        <p className="text-sm font-semibold text-gray-900">{user?.name} {user?.surname}</p>
+        <p className="text-xs text-gray-400 mt-0.5 break-all">{user?.email}</p>
+      </div>
+      <div className="px-4 py-3 border-b border-gray-100 space-y-2">
+        <div className="flex items-center justify-between gap-4 text-xs">
+          <span className="text-gray-400">Current plan</span>
+          <span className="font-semibold text-gray-800">{planNames[subscription?.plan] || 'No active plan'}</span>
+        </div>
+        {subscription && (
+          <div className="flex items-start justify-between gap-4 text-xs">
+            <span className="text-gray-400">Remaining</span>
+            <span className={`font-mono font-semibold text-right ${remainingTime === '00h 00m 00s' ? 'text-red-600' : 'text-gray-800'}`} aria-live="polite">
+              {remainingTime}
+            </span>
+          </div>
+        )}
+      </div>
+      <div className="p-2">
+        <button onClick={onPricing} className="w-full text-left px-3 py-2 text-sm text-gray-600 rounded-lg hover:bg-gray-50 hover:text-gray-900 cursor-pointer">
+          View or change plan
+        </button>
+        <button onClick={onLogout} className="w-full text-left px-3 py-2 text-sm font-medium text-red-600 rounded-lg hover:bg-red-50 cursor-pointer">
+          Sign Out
+        </button>
+      </div>
+    </>
+  );
+}
+
 export default function Navbar({ current }) {
-  const { user, logout } = useAuth();
+  const { user, subscription, logout, refreshSubscription } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [now, setNow] = useState(0);
+  const profileRef = useRef(null);
+  const expiryRefreshRef = useRef(null);
 
   const handleLogout = () => { logout(); navigate('/'); };
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const closeProfile = (event) => {
+      if (profileRef.current && !profileRef.current.contains(event.target)) setProfileOpen(false);
+    };
+    document.addEventListener('mousedown', closeProfile);
+    return () => document.removeEventListener('mousedown', closeProfile);
+  }, []);
+
+  useEffect(() => {
+    if (!subscription?.expires_at || !now) return;
+    if (new Date(subscription.expires_at).getTime() <= now && expiryRefreshRef.current !== subscription.expires_at) {
+      expiryRefreshRef.current = subscription.expires_at;
+      refreshSubscription();
+    }
+  }, [now, subscription?.expires_at, refreshSubscription]);
+
+  const remainingTime = (() => {
+    if (subscription?.plan === 'unlimited' || !subscription?.expires_at) return 'No time limit';
+    if (!now) return 'Calculating...';
+    const remaining = Math.max(0, new Date(subscription.expires_at).getTime() - now);
+    const totalSeconds = Math.floor(remaining / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${days ? `${days}d ` : ''}${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+  })();
+
+  const handlePricing = () => { navigate('/pricing'); setProfileOpen(false); setOpen(false); };
+  const toggleProfile = () => {
+    setProfileOpen((value) => !value);
+    if (!profileOpen) refreshSubscription();
+  };
 
   const links = [
     { label: 'Dashboard', path: '/dashboard' },
@@ -41,10 +124,24 @@ export default function Navbar({ current }) {
             </button>
           ))}
           <div className="w-px h-5 bg-gray-200 mx-1"></div>
-          {user && <span className="text-sm text-gray-400 hidden lg:inline mr-1">{user.name}</span>}
-          <button onClick={handleLogout} className="w-9 h-9 flex items-center justify-center text-gray-400 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-all cursor-pointer" title="Sign Out">
-            <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
-          </button>
+          {user && (
+            <div className="relative" ref={profileRef}>
+              <button
+                onClick={toggleProfile}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-all cursor-pointer"
+                aria-expanded={profileOpen}
+                aria-haspopup="menu"
+              >
+                <span>{user.name}</span>
+                <svg className={`w-4 h-4 transition-transform ${profileOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+              </button>
+              {profileOpen && (
+                <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden" role="menu">
+                  <ProfileDetails user={user} subscription={subscription} remainingTime={remainingTime} onPricing={handlePricing} onLogout={handleLogout} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -75,11 +172,17 @@ export default function Navbar({ current }) {
               </button>
             </div>
 
-            {/* User info */}
+            {/* User profile */}
             {user && (
-              <div className="px-5 py-3 border-b border-gray-50">
-                <p className="text-sm font-medium text-gray-900">{user.name} {user.surname}</p>
-                <p className="text-xs text-gray-400">{user.email}</p>
+              <div className="border-b border-gray-100">
+                <button onClick={toggleProfile} className="w-full px-5 py-3 flex items-center justify-between text-left cursor-pointer hover:bg-gray-50">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{user.name} {user.surname}</p>
+                    <p className="text-xs text-gray-400">View profile and plan</p>
+                  </div>
+                  <svg className={`w-4 h-4 text-gray-400 transition-transform ${profileOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+                </button>
+                {profileOpen && <div className="bg-gray-50/50"><ProfileDetails user={user} subscription={subscription} remainingTime={remainingTime} onPricing={handlePricing} onLogout={handleLogout} /></div>}
               </div>
             )}
 
@@ -100,16 +203,6 @@ export default function Navbar({ current }) {
               ))}
             </div>
 
-            {/* Sign out */}
-            <div className="px-5 py-4 border-t border-gray-100">
-              <button
-                onClick={() => { handleLogout(); setOpen(false); }}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 font-medium rounded-lg hover:bg-red-50 transition-all cursor-pointer"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
-                Sign Out
-              </button>
-            </div>
           </div>
         </div>
       )}
